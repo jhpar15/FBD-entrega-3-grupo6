@@ -172,22 +172,27 @@ def eliminar_resena(resena_id: str):
     db["resenas"].update_one({"_id": resena_id}, {"$set": {"estado": "eliminada"}})
     return {"mensaje": "Reseña eliminada exitosamente"}
 
-@app.put('/resenas/{resena_id}/utilidad')
-def votar_utilidad(resena_id: str, datos: dict):
-    # RF5: Marcar reseña como útil
-    cliente_id = datos.get("cliente_id")
-    
-    if not cliente_id:
-        raise HTTPException(status_code=400, detail="Se requiere el ID del cliente para votar.")
+from pydantic import BaseModel
 
-    ya_voto = db["resenas"].count_documents({"_id": resena_id, "votos_utilidad": cliente_id})
+# Creamos un "molde" estricto para que Python no se confunda al recibir el dato
+class Voto(BaseModel):
+    cliente_id: str
+
+# ==========================================
+# RF5: Marcar reseña como útil (Versión Blindada)
+# ==========================================
+@app.put('/resenas/{resena_id}/utilidad')
+def votar_utilidad(resena_id: str, voto: Voto):
+    # 1. Verificamos si este cliente ya votó
+    ya_voto = db["resenas"].count_documents({"_id": resena_id, "votos_utilidad": voto.cliente_id})
     
     if ya_voto > 0:
         raise HTTPException(status_code=400, detail="¡Ya votaste por esta reseña! No se permite voto doble.")
 
+    # 2. Si no ha votado, lo agregamos a la lista
     db["resenas"].update_one(
         {"_id": resena_id},
-        {"$addToSet": {"votos_utilidad": cliente_id}}
+        {"$addToSet": {"votos_utilidad": voto.cliente_id}}
     )
     return {"mensaje": "¡Tu voto de utilidad ha sido registrado!"}
 
