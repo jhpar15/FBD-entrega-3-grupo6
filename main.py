@@ -62,3 +62,84 @@ def get_top_hoteles():
     
     resultado = list(db["resenas"].aggregate(pipeline))
     return {"items": resultado}
+from datetime import datetime
+
+# ==========================================
+# RFC2: Evolución de reputación mes a mes
+# ==========================================
+@app.get("/analiticas/evolucion/{hotel_id}")
+def evolucion_hotel(hotel_id: str, anio: int = 2026):
+    pipeline = [
+        {"$match": {
+            "hotel_id": hotel_id,
+            "estado": "publicada",
+            "fecha_creacion": {
+                "$gte": datetime(anio, 1, 1),
+                "$lte": datetime(anio, 12, 31, 23, 59, 59)
+            }
+        }},
+        {"$group": {
+            "_id": {"$month": "$fecha_creacion"},
+            "calificacion_promedio": {"$avg": "$calificacion"},
+            "total_resenas": {"$sum": 1}
+        }},
+        {"$sort": {"_id": 1}},
+        {"$project": {
+            "_id": 0,
+            "mes": "$_id",
+            "calificacion_promedio": {"$round": ["$calificacion_promedio", 2]},
+            "total_resenas": 1
+        }}
+    ]
+    resultado = list(db.resenas.aggregate(pipeline))
+    return {"items": resultado}
+
+# ==========================================
+# RFC3: Perfil comparativo por ciudad
+# ==========================================
+@app.get("/analiticas/comparativo/{ciudad}")
+def comparativo_ciudad(ciudad: str):
+    pipeline = [
+        {"$match": {"ciudad": ciudad}},
+        {"$lookup": {
+            "from": "resenas",
+            "localField": "_id",
+            "foreignField": "hotel_id",
+            "as": "resenas_hotel",
+            "pipeline": [{"$match": {"estado": "publicada"}}]
+        }},
+        {"$unwind": {
+            "path": "$resenas_hotel",
+            "preserveNullAndEmptyArrays": True
+        }},
+        {"$group": {
+            "_id": "$_id",
+            "nombre_hotel": {"$first": "$nombre"},
+            "ciudad": {"$first": "$ciudad"},
+            "calificacion_promedio": {"$avg": "$resenas_hotel.calificacion"},
+            "total_resenas": {"$sum": 1},
+            "resenas_con_respuesta": {
+                "$sum": {"$cond": [{"$ne": ["$resenas_hotel.respuesta_admin", None]}, 1, 0]}
+            },
+            "resenas_destacadas": {
+                "$sum": {"$cond": ["$resenas_hotel.destacada", 1, 0]}
+            }
+        }},
+        {"$project": {
+            "_id": 0,
+            "hotel_id": "$_id",
+            "nombre_hotel": 1,
+            "ciudad": 1,
+            "calificacion_promedio": {"$round": ["$calificacion_promedio", 2]},
+            "total_resenas": 1,
+            "porcentaje_con_respuesta": {
+                "$round": [{"$multiply": [{"$divide": ["$resenas_con_respuesta", "$total_resenas"]}, 100]}, 1]
+            },
+            "porcentaje_destacadas": {
+                "$round": [{"$multiply": [{"$divide": ["$resenas_destacadas", "$total_resenas"]}, 100]}, 1]
+            }
+        }},
+        {"$sort": {"calificacion_promedio": -1}}
+    ]
+    resultado = list(db.hoteles.aggregate(pipeline))
+    return {"items": resultado}
