@@ -1,10 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import HTTPException
 from pymongo import MongoClient
 from datetime import datetime
-import os
-
+import uuid
 
 app = FastAPI()
 
@@ -15,7 +13,7 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-
+# Conexión a MongoDB
 client = MongoClient("mongodb://ISIS2304A17202610:QErnMWHEO0AZ@157.253.236.88:8087/ISIS2304A17202610?authSource=admin")
 db = client["ISIS2304A17202610"]
 
@@ -30,14 +28,9 @@ def inicio():
 def get_resenas(hotel_id: str):
     resenas = list(db["resenas"].find({"hotel_id": hotel_id, "estado": "publicada"}))
     return {"items": resenas}
-    
-    return {"items": resenas}
-
-import uuid 
 
 @app.post('/hoteles/{hotel_id}/resenas')
 def post_resena(hotel_id: str, datos: dict):
-    
     # NUEVA REGLA: Verifica que no haya reseñado esta reserva antes
     existe = db["resenas"].find_one({"reserva_id": datos["reserva_id"]})
     if existe:
@@ -49,12 +42,12 @@ def post_resena(hotel_id: str, datos: dict):
     datos['fecha_creacion'] = datetime.now()
     datos['estado'] = "publicada"
     datos['destacada'] = False
-    datos['utilidad'] = {"total_votos": 0, "usuarios_votaron": []}
+    datos['votos_utilidad'] = [] # Modificado para alinear perfectamente con el RF5
     datos['respuesta_admin'] = None
     
     db["resenas"].insert_one(datos)
-    
     return {'mensaje': 'Reseña guardada exitosamente'}
+
 
 # -----------------------------------------
 # SECCIÓN: CONSULTAS ANALÍTICAS (RFC1, RFC2, RFC3)
@@ -72,15 +65,12 @@ def get_top_hoteles():
         { "$sort": { "calificacion_promedio": -1 } },
         { "$limit": 10 }
     ]
-    
     resultado = list(db["resenas"].aggregate(pipeline))
     return {"items": resultado}
 
-# ==========================================
-# RFC2: Evolución de reputación mes a mes
-# ==========================================
 @app.get("/analiticas/evolucion/{hotel_id}")
 def evolucion_hotel(hotel_id: str, anio: int = 2026):
+    # RFC2: Evolución de reputación mes a mes
     pipeline = [
         {"$match": {
             "hotel_id": hotel_id,
@@ -106,11 +96,9 @@ def evolucion_hotel(hotel_id: str, anio: int = 2026):
     resultado = list(db.resenas.aggregate(pipeline))
     return {"items": resultado}
 
-# ==========================================
-# RFC3: Perfil comparativo por ciudad
-# ==========================================
 @app.get("/analiticas/comparativo/{ciudad}")
 def comparativo_ciudad(ciudad: str):
+    # RFC3: Perfil comparativo por ciudad
     pipeline = [
         {"$match": {"ciudad": ciudad}},
         {"$lookup": {
@@ -155,20 +143,20 @@ def comparativo_ciudad(ciudad: str):
     ]
     resultado = list(db.hoteles.aggregate(pipeline))
     return {"items": resultado}
-    # ==========================================
-# RF6: Historial de reseñas del cliente
-# ==========================================
+
+
+# -----------------------------------------
+# SECCIÓN: FUNCIONES DE CLIENTE (RF2, RF3, RF5, RF6)
+# -----------------------------------------
 @app.get('/clientes/{cliente_id}/resenas')
 def get_historial_cliente(cliente_id: str):
-    # Traemos todas las reseñas del cliente, proyectando el _id nativo de cadena
+    # RF6: Historial de reseñas del cliente
     resenas = list(db["resenas"].find({"cliente_id": cliente_id}))
     return {"items": resenas}
 
-# ==========================================
-# RF2: Editar reseña (Texto y Calificación)
-# ==========================================
 @app.put('/resenas/{resena_id}')
 def editar_resena(resena_id: str, datos: dict):
+    # RF2: Editar reseña
     actualizacion = {
         "$set": {
             "texto": datos["texto"],
@@ -178,22 +166,38 @@ def editar_resena(resena_id: str, datos: dict):
     db["resenas"].update_one({"_id": resena_id}, actualizacion)
     return {"mensaje": "Reseña actualizada exitosamente"}
 
-# ==========================================
-# RF3: Eliminar reseña (Borrado lógico)
-# ==========================================
 @app.delete('/resenas/{resena_id}')
 def eliminar_resena(resena_id: str):
-    # Cambiamos el estado a "eliminada" para cumplir con el historial del RF6
+    # RF3: Eliminar reseña (Borrado lógico)
     db["resenas"].update_one({"_id": resena_id}, {"$set": {"estado": "eliminada"}})
     return {"mensaje": "Reseña eliminada exitosamente"}
-# ==========================================
-# SECCIÓN ADMINISTRADOR (RF7, RF8, RF9)
-# ==========================================
-from datetime import datetime
 
-# RF7: Responder reseña
+@app.put('/resenas/{resena_id}/utilidad')
+def votar_utilidad(resena_id: str, datos: dict):
+    # RF5: Marcar reseña como útil
+    cliente_id = datos.get("cliente_id")
+    
+    if not cliente_id:
+        raise HTTPException(status_code=400, detail="Se requiere el ID del cliente para votar.")
+
+    ya_voto = db["resenas"].count_documents({"_id": resena_id, "votos_utilidad": cliente_id})
+    
+    if ya_voto > 0:
+        raise HTTPException(status_code=400, detail="¡Ya votaste por esta reseña! No se permite voto doble.")
+
+    db["resenas"].update_one(
+        {"_id": resena_id},
+        {"$addToSet": {"votos_utilidad": cliente_id}}
+    )
+    return {"mensaje": "¡Tu voto de utilidad ha sido registrado!"}
+
+
+# -----------------------------------------
+# SECCIÓN: ADMINISTRADOR (RF7, RF8, RF9)
+# -----------------------------------------
 @app.put('/admin/resenas/{resena_id}/respuesta')
 def responder_resena(resena_id: str, datos: dict):
+    # RF7: Responder reseña
     actualizacion = {
         "$set": {
             "respuesta_admin": {
@@ -205,41 +209,15 @@ def responder_resena(resena_id: str, datos: dict):
     db["resenas"].update_one({"_id": resena_id}, actualizacion)
     return {"mensaje": "Respuesta enviada exitosamente"}
 
-# RF8: Eliminar reseña (Admin)
 @app.delete('/admin/resenas/{resena_id}')
 def admin_eliminar_resena(resena_id: str):
-    # El admin marca la reseña como bloqueada por políticas
+    # RF8: Eliminar reseña (Admin)
     db["resenas"].update_one({"_id": resena_id}, {"$set": {"estado": "eliminada_por_admin"}})
     return {"mensaje": "Reseña eliminada por administrador"}
 
-# RF9: Destacar reseña
 @app.put('/admin/hoteles/{hotel_id}/destacar/{resena_id}')
 def destacar_resena(hotel_id: str, resena_id: str):
-    # 1. Quitarle el destacado a cualquier otra reseña de este hotel (solo puede haber una)
+    # RF9: Destacar reseña
     db["resenas"].update_many({"hotel_id": hotel_id}, {"$set": {"destacada": False}})
-    # 2. Ponerle el destacado a la reseña elegida
     db["resenas"].update_one({"_id": resena_id}, {"$set": {"destacada": True}})
     return {"mensaje": "Reseña destacada exitosamente"}
-
-# ==========================================
-# RF5: Marcar reseña como útil
-# ==========================================
-@app.put('/resenas/{resena_id}/utilidad')
-def votar_utilidad(resena_id: str, datos: dict):
-    cliente_id = datos.get("cliente_id")
-    
-    if not cliente_id:
-        raise HTTPException(status_code=400, detail="Se requiere el ID del cliente para votar.")
-
-    # 1. Verificamos si este cliente ya está en la lista de votos de esta reseña
-    ya_voto = db["resenas"].count_documents({"_id": resena_id, "votos_utilidad": cliente_id})
-    
-    if ya_voto > 0:
-        raise HTTPException(status_code=400, detail="¡Ya votaste por esta reseña! No se permite voto doble.")
-
-    # 2. Si no ha votado, lo agregamos a la lista
-    db["resenas"].update_one(
-        {"_id": resena_id},
-        {"$addToSet": {"votos_utilidad": cliente_id}}
-    )
-    return {"mensaje": "¡Tu voto de utilidad ha sido registrado!"}
