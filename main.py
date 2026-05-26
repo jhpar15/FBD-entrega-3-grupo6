@@ -187,3 +187,37 @@ def eliminar_resena(resena_id: str):
     # Cambiamos el estado a "eliminada" para cumplir con el historial del RF6
     db["resenas"].update_one({"_id": resena_id}, {"$set": {"estado": "eliminada"}})
     return {"mensaje": "Reseña eliminada exitosamente"}
+# ==========================================
+# SECCIÓN ADMINISTRADOR (RF7, RF8, RF9)
+# ==========================================
+from datetime import datetime
+
+# RF7: Responder reseña
+@app.put('/admin/resenas/{resena_id}/respuesta')
+def responder_resena(resena_id: str, datos: dict):
+    actualizacion = {
+        "$set": {
+            "respuesta_admin": {
+                "texto": datos["texto"],
+                "fecha_respuesta": datetime.now()
+            }
+        }
+    }
+    db["resenas"].update_one({"_id": resena_id}, actualizacion)
+    return {"mensaje": "Respuesta enviada exitosamente"}
+
+# RF8: Eliminar reseña (Admin)
+@app.delete('/admin/resenas/{resena_id}')
+def admin_eliminar_resena(resena_id: str):
+    # El admin marca la reseña como bloqueada por políticas
+    db["resenas"].update_one({"_id": resena_id}, {"$set": {"estado": "eliminada_por_admin"}})
+    return {"mensaje": "Reseña eliminada por administrador"}
+
+# RF9: Destacar reseña
+@app.put('/admin/hoteles/{hotel_id}/destacar/{resena_id}')
+def destacar_resena(hotel_id: str, resena_id: str):
+    # 1. Quitarle el destacado a cualquier otra reseña de este hotel (solo puede haber una)
+    db["resenas"].update_many({"hotel_id": hotel_id}, {"$set": {"destacada": False}})
+    # 2. Ponerle el destacado a la reseña elegida
+    db["resenas"].update_one({"_id": resena_id}, {"$set": {"destacada": True}})
+    return {"mensaje": "Reseña destacada exitosamente"}
