@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import HTTPException
 from pymongo import MongoClient
 from datetime import datetime
 import os
+
 
 app = FastAPI()
 
@@ -36,8 +38,14 @@ import uuid
 
 @app.post('/hoteles/{hotel_id}/resenas')
 def post_resena(hotel_id: str, datos: dict):
+    
+    # NUEVA REGLA: Verifica que no haya reseñado esta reserva antes
+    existe = db["resenas"].find_one({"reserva_id": datos["reserva_id"]})
+    if existe:
+        raise HTTPException(status_code=400, detail="Ya existe una reseña para esta reserva.")
+
     # RF1: Crear una nueva reseña
-    datos['_id'] = f"resena_{uuid.uuid4().hex[:8]}"  
+    datos['_id'] = f"resena_{uuid.uuid4().hex[:8]}"
     datos['hotel_id'] = hotel_id
     datos['fecha_creacion'] = datetime.now()
     datos['estado'] = "publicada"
