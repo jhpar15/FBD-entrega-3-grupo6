@@ -28,9 +28,8 @@ def inicio():
 # -----------------------------------------
 @app.get('/hoteles/{hotel_id}/resenas')
 def get_resenas(hotel_id: str):
-    # RF4: Consultar reseñas publicadas de un hotel específico
-    resenas = list(db["resenas"].find({"hotel_id": hotel_id, "estado": "publicada"}, {"_id": 0}))
-    
+    resenas = list(db["resenas"].find({"hotel_id": hotel_id, "estado": "publicada"}))
+    return {"items": resenas}
     
     return {"items": resenas}
 
