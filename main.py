@@ -156,3 +156,34 @@ def comparativo_ciudad(ciudad: str):
     ]
     resultado = list(db.hoteles.aggregate(pipeline))
     return {"items": resultado}
+    # ==========================================
+# RF6: Historial de reseñas del cliente
+# ==========================================
+@app.get('/clientes/{cliente_id}/resenas')
+def get_historial_cliente(cliente_id: str):
+    # Traemos todas las reseñas del cliente, proyectando el _id nativo de cadena
+    resenas = list(db["resenas"].find({"cliente_id": cliente_id}))
+    return {"items": resenas}
+
+# ==========================================
+# RF2: Editar reseña (Texto y Calificación)
+# ==========================================
+@app.put('/resenas/{resena_id}')
+def editar_resena(resena_id: str, datos: dict):
+    actualizacion = {
+        "$set": {
+            "texto": datos["texto"],
+            "calificacion": datos["calificacion"]
+        }
+    }
+    db["resenas"].update_one({"_id": resena_id}, actualizacion)
+    return {"mensaje": "Reseña actualizada exitosamente"}
+
+# ==========================================
+# RF3: Eliminar reseña (Borrado lógico)
+# ==========================================
+@app.delete('/resenas/{resena_id}')
+def eliminar_resena(resena_id: str):
+    # Cambiamos el estado a "eliminada" para cumplir con el historial del RF6
+    db["resenas"].update_one({"_id": resena_id}, {"$set": {"estado": "eliminada"}})
+    return {"mensaje": "Reseña eliminada exitosamente"}
