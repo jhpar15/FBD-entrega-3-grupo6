@@ -179,12 +179,11 @@ class Voto(BaseModel):
     cliente_id: str
 
 # ==========================================
-# RF5: Marcar reseña como útil (Versión Blindada)
-# ==========================================
-@app.put('/resenas/{resena_id}/utilidad')
-def votar_utilidad(resena_id: str, voto: Voto):
+# RF5: Marcar reseña como útil 
+@app.get('/resenas/{resena_id}/votar/{cliente_id}')
+def votar_utilidad_anti_cors(resena_id: str, cliente_id: str):
     # 1. Verificamos si este cliente ya votó
-    ya_voto = db["resenas"].count_documents({"_id": resena_id, "votos_utilidad": voto.cliente_id})
+    ya_voto = db["resenas"].count_documents({"_id": resena_id, "votos_utilidad": cliente_id})
     
     if ya_voto > 0:
         raise HTTPException(status_code=400, detail="¡Ya votaste por esta reseña! No se permite voto doble.")
@@ -192,7 +191,7 @@ def votar_utilidad(resena_id: str, voto: Voto):
     # 2. Si no ha votado, lo agregamos a la lista
     db["resenas"].update_one(
         {"_id": resena_id},
-        {"$addToSet": {"votos_utilidad": voto.cliente_id}}
+        {"$addToSet": {"votos_utilidad": cliente_id}}
     )
     return {"mensaje": "¡Tu voto de utilidad ha sido registrado!"}
 
