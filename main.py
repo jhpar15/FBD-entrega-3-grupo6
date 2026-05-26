@@ -61,4 +61,4 @@ def get_top_hoteles():
     ]
     
     resultado = list(db["resenas"].aggregate(pipeline))
-    return resultado
+    return {"items": resultado}
