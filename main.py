@@ -13,7 +13,7 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-# Conexión a tu base de datos en la Universidad
+
 client = MongoClient("mongodb://ISIS2304A17202610:QErnMWHEO0AZ@157.253.236.88:8087/ISIS2304A17202610?authSource=admin")
 db = client["ISIS2304A17202610"]
 
@@ -29,12 +29,15 @@ def get_resenas(hotel_id: str):
     # RF4: Consultar reseñas publicadas de un hotel específico
     resenas = list(db["resenas"].find({"hotel_id": hotel_id, "estado": "publicada"}, {"_id": 0}))
     
-    # ¡AQUÍ ESTÁ LA CORRECCIÓN! Envolvemos la lista en un diccionario con la llave "items"
+    
     return {"items": resenas}
+
+import uuid 
 
 @app.post('/hoteles/{hotel_id}/resenas')
 def post_resena(hotel_id: str, datos: dict):
     # RF1: Crear una nueva reseña
+    datos['_id'] = f"resena_{uuid.uuid4().hex[:8]}"  
     datos['hotel_id'] = hotel_id
     datos['fecha_creacion'] = datetime.now()
     datos['estado'] = "publicada"
