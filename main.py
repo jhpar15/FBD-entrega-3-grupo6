@@ -13,6 +13,7 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
+# Conexión a tu base de datos en la Universidad
 client = MongoClient("mongodb://ISIS2304A17202610:QErnMWHEO0AZ@157.253.236.88:8087/ISIS2304A17202610?authSource=admin")
 db = client["ISIS2304A17202610"]
 
@@ -27,7 +28,9 @@ def inicio():
 def get_resenas(hotel_id: str):
     # RF4: Consultar reseñas publicadas de un hotel específico
     resenas = list(db["resenas"].find({"hotel_id": hotel_id, "estado": "publicada"}, {"_id": 0}))
-    return resenas
+    
+    # ¡AQUÍ ESTÁ LA CORRECCIÓN! Envolvemos la lista en un diccionario con la llave "items"
+    return {"items": resenas}
 
 @app.post('/hoteles/{hotel_id}/resenas')
 def post_resena(hotel_id: str, datos: dict):
@@ -44,7 +47,7 @@ def post_resena(hotel_id: str, datos: dict):
     return {'mensaje': 'Reseña guardada exitosamente'}
 
 # -----------------------------------------
-# SECCIÓN: CONSULTAS ANALÍTICAS (RFC1)
+# SECCIÓN: CONSULTAS ANALÍTICAS (RFC1, RFC2, RFC3)
 # -----------------------------------------
 @app.get('/analiticas/top-hoteles')
 def get_top_hoteles():
@@ -62,7 +65,6 @@ def get_top_hoteles():
     
     resultado = list(db["resenas"].aggregate(pipeline))
     return {"items": resultado}
-from datetime import datetime
 
 # ==========================================
 # RFC2: Evolución de reputación mes a mes
